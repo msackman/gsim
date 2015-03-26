@@ -6,23 +6,6 @@ import (
 	"sync"
 )
 
-type node struct {
-	n         *big.Int
-	depth     int
-	value     interface{}
-	generator OptionGenerator
-	cumuOpts  *big.Int
-}
-
-type rootNode struct {
-	*node
-}
-
-type permN struct {
-	perm []interface{}
-	n    *big.Int
-}
-
 // The OptionGenerator is responsible for generating the next
 // available possible paths from each permutation prefix. Two
 // implementations of OptionGenerator are provided: simplePermutation
@@ -42,43 +25,23 @@ type OptionGenerator interface {
 	Clone() OptionGenerator
 }
 
+type node struct {
+	n         *big.Int
+	depth     int
+	value     interface{}
+	generator OptionGenerator
+	cumuOpts  *big.Int
+}
+
+type permN struct {
+	perm []interface{}
+	n    *big.Int
+}
+
 // Permutations allows you to interate through the available
 // permutations, and extract specific permutations.
-type Permutations interface {
-	// Iterate through every permutation in the current go-routine. No
-	// parallelism occurs. The function passed is invoked once for
-	// every permutation. It is supplied with the permutation number,
-	// and the permutation itself. These arguments should be
-	// considered read-only. If you mutate the permutation number or
-	// permutation then behaviour is undefined.
-	ForEach(func(*big.Int, []interface{}))
-	// Iterate through every permutation and use concurrency. A number
-	// of go-routines will be spawned appropriate for the current
-	// value of GOMAXPROCS. These go-routines will be fed batches of
-	// permutations and then invoke the function passed for each
-	// permutation. It's your responsibility to make sure the function
-	// passed is safe to be run concurrently from multiple
-	// go-routines.
-	//
-	// The first argument is the batchsize. If the batchsize is very
-	// low, then the generation of permutations will thrash CPU due to
-	// contention for locks on channels. If your processing of each
-	// permutation is very quick, then high numbers (e.g. 8192) can
-	// help to keep your CPU busy. If your processing of each
-	// permutation is less quick then lower numbers will avoid memory
-	// ballooning. Some trial and error may be worthwhile to find a
-	// good number for your computer, but 2048 is a sensible place to
-	// start.
-	ForEachPar(int, func(*big.Int, []interface{}))
-	// Every permutation has a unique number, which is supplied to the
-	// function passed in both of the other functions in
-	// Permutations. If you need to generate specific permutations,
-	// those numbers can be provided to Permutation, which will
-	// generate the exact same permutation. Note that iterating
-	// through a range of permutation numbers and repeatedly calling
-	// Permutation is slower than using either of the iterator
-	// functions.
-	Permutation(*big.Int) []interface{}
+type Permutations struct {
+	*node
 }
 
 var (
@@ -88,20 +51,36 @@ var (
 )
 
 // Construct a Permutations from an OptionGenerator.
-func BuildPermutations(gen OptionGenerator) Permutations {
+func BuildPermutations(gen OptionGenerator) *Permutations {
 	cur := &node{
 		n:         bigIntZero,
 		depth:     0,
 		generator: gen,
 		cumuOpts:  bigIntOne,
 	}
-	root := &rootNode{
+	return &Permutations{
 		node: cur,
 	}
-	return root
 }
 
-func (n *rootNode) ForEachPar(batchSize int, f func(*big.Int, []interface{})) {
+// Iterate through every permutation and use concurrency. A number
+// of go-routines will be spawned appropriate for the current
+// value of GOMAXPROCS. These go-routines will be fed batches of
+// permutations and then invoke the function passed for each
+// permutation. It's your responsibility to make sure the function
+// passed is safe to be run concurrently from multiple
+// go-routines.
+//
+// The first argument is the batchsize. If the batchsize is very
+// low, then the generation of permutations will thrash CPU due to
+// contention for locks on channels. If your processing of each
+// permutation is very quick, then high numbers (e.g. 8192) can
+// help to keep your CPU busy. If your processing of each
+// permutation is less quick then lower numbers will avoid memory
+// ballooning. Some trial and error may be worthwhile to find a
+// good number for your computer, but 2048 is a sensible place to
+// start.
+func (p *Permutations) ForEachPar(batchSize int, f func(*big.Int, []interface{})) {
 	par := runtime.GOMAXPROCS(0) // 0 gets the current count
 	var wg sync.WaitGroup
 	wg.Add(par)
@@ -123,7 +102,7 @@ func (n *rootNode) ForEachPar(batchSize int, f func(*big.Int, []interface{})) {
 
 	batch := make([]*permN, batchSize)
 	batchIdx := 0
-	n.ForEach(func(n *big.Int, perm []interface{}) {
+	p.ForEach(func(n *big.Int, perm []interface{}) {
 		permCopy := make([]interface{}, len(perm))
 		copy(permCopy, perm)
 		batch[batchIdx] = &permN{n: n, perm: permCopy}
@@ -139,14 +118,20 @@ func (n *rootNode) ForEachPar(batchSize int, f func(*big.Int, []interface{})) {
 	wg.Wait()
 }
 
-func (r *rootNode) ForEach(f func(*big.Int, []interface{})) {
+// Iterate through every permutation in the current go-routine. No
+// parallelism occurs. The function passed is invoked once for
+// every permutation. It is supplied with the permutation number,
+// and the permutation itself. These arguments should be
+// considered read-only. If you mutate the permutation number or
+// permutation then behaviour is undefined.
+func (p *Permutations) ForEach(f func(*big.Int, []interface{})) {
 	perm := []interface{}{}
 
 	worklist := []*node{&node{
-		n:         r.node.n,
-		depth:     r.node.depth,
-		generator: r.node.generator.Clone(),
-		cumuOpts:  r.node.cumuOpts,
+		n:         p.node.n,
+		depth:     p.node.depth,
+		generator: p.node.generator.Clone(),
+		cumuOpts:  p.node.cumuOpts,
 	}}
 	l := len(worklist)
 
@@ -195,13 +180,21 @@ func (r *rootNode) ForEach(f func(*big.Int, []interface{})) {
 	}
 }
 
-func (r *rootNode) Permutation(permNum *big.Int) []interface{} {
+// Every permutation has a unique number, which is supplied to the
+// function passed in both of the other functions in
+// Permutations. If you need to generate specific permutations,
+// those numbers can be provided to Permutation, which will
+// generate the exact same permutation. Note that iterating
+// through a range of permutation numbers and repeatedly calling
+// Permutation is slower than using either of the iterator
+// functions.
+func (p *Permutations) Permutation(permNum *big.Int) []interface{} {
 	n := big.NewInt(0).Set(permNum)
 	perm := []interface{}{}
 	choiceBig := big.NewInt(0)
 
-	gen := r.node.generator.Clone()
-	val := r.node.value
+	gen := p.node.generator.Clone()
+	val := p.node.value
 	for {
 		options := gen.Generate(val)
 		optionCount := len(options)
