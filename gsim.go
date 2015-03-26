@@ -51,7 +51,6 @@ type Permutations struct {
 var (
 	bigIntZero = big.NewInt(0)
 	bigIntOne  = big.NewInt(1)
-	bigIntTwo  = big.NewInt(2)
 )
 
 // Construct a Permutations from an OptionGenerator.
