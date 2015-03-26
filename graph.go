@@ -62,26 +62,21 @@ func (gn *GraphNode) SetJoins(join bool) {
 
 // Add an edge from the receiver to the argument. This is idempotent.
 func (gn *GraphNode) AddEdgeTo(gn2 *GraphNode) {
-	found := false
-	for _, elem := range gn.out {
-		if elem == gn2 {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !containsGraphNode(gn.out, gn2) {
 		gn.out = append(gn.out, gn2)
 	}
-	found = false
-	for _, elem := range gn2.in {
-		if elem == gn {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !containsGraphNode(gn2.in, gn) {
 		gn2.in = append(gn2.in, gn)
 	}
+}
+
+func containsGraphNode(gns []*GraphNode, gn *GraphNode) bool {
+	for _, elem := range gns {
+		if elem == gn {
+			return true
+		}
+	}
+	return false
 }
 
 type graphPermutation struct {
