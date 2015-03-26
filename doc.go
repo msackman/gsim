@@ -28,7 +28,7 @@
 // as TLA+, but it allows you to write your models in Go and thus
 // there'll be less of a gap between your model code and your real
 // implementation.
-
+//
 // See https://github.com/msackman/gsim/blob/master/main/main.go for
 // examples.
 package gsim
