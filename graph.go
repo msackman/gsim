@@ -9,16 +9,21 @@ import (
 // occurring, for example. As usual with graph libraries, create all
 // the nodes you need first, and then link them together with edges.
 //
+// Permutations generated will be lists of GraphNodes. Access the
+// value you supplied through the Value field.
+//
 // It is your responsibility to ensure that the graphs constructed
 // contain no cycles. If they contain cycles, permutation generation
-// will never terminate. In this way, it is not really suitable for
+// may never terminate. In this way, it is not really suitable for
 // modelling infinite state machines (tools like TLA+ are better
 // suited for this). It's more suited for permutating finite sets of
 // external inputs to a system, with dependencies between those
 // inputs.
 //
-// Permutations generated will be lists of GraphNodes. Access the
-// value you supplied through the Value field.
+// You must also ensure even your generation of the graph is
+// deterministic - i.e. the order in which edges are added to nodes
+// should be the same for multiple iterations. If they are not, then
+// you will find permutation numbers differ between iterations.
 type GraphNode struct {
 	// The value you've provided to this GraphNode.
 	Value interface{}

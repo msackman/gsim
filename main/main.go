@@ -7,26 +7,38 @@ import (
 	"runtime"
 )
 
+type simpleConsumer struct{}
+
+func (sc *simpleConsumer) Clone() gsim.PermutationConsumer {
+	return sc
+}
+
+func (sc *simpleConsumer) Consume(n *big.Int, perm []interface{}) {
+	fmt.Println(n, perm)
+}
+
 func main() {
 	runtime.GOMAXPROCS(2 * runtime.NumCPU())
 
-	simplePerms()
-	graphPerms()
+	consumer := &simpleConsumer{}
+
+	simplePerms(consumer)
+	graphPerms(consumer)
 }
 
-func graphPerms() {
+func graphPerms(consumer gsim.PermutationConsumer) {
 	// no deps, so exactly the same as a SimplePermutation
 	c1 := gsim.NewGraphNode("a")
 	c2 := gsim.NewGraphNode("b")
 	c3 := gsim.NewGraphNode("c")
 	c4 := gsim.NewGraphNode("d")
-	runPerms(gsim.NewGraphPermutation(c1, c2, c3, c4))
+	runPerms(consumer, gsim.NewGraphPermutation(c1, c2, c3, c4))
 
 	// simple dependency
 	b1 := gsim.NewGraphNode("B1")
 	b2 := gsim.NewGraphNode("B2")
 	b1.AddEdgeTo(b2)
-	runPerms(gsim.NewGraphPermutation(b1))
+	runPerms(consumer, gsim.NewGraphPermutation(b1))
 
 	// more complex dependencies:
 	//
@@ -50,7 +62,7 @@ func graphPerms() {
 	a3.SetJoins(true)
 	a4.SetJoins(true)
 	a5.SetJoins(true)
-	runPerms(gsim.NewGraphPermutation(a1, a2))
+	runPerms(consumer, gsim.NewGraphPermutation(a1, a2))
 
 	// by not setting d3 to a join, it can appear after any enabling
 	// node is visited.
@@ -59,16 +71,13 @@ func graphPerms() {
 	d3 := gsim.NewGraphNode("D3")
 	d1.AddEdgeTo(d3)
 	d2.AddEdgeTo(d3)
-	runPerms(gsim.NewGraphPermutation(d1, d2))
+	runPerms(consumer, gsim.NewGraphPermutation(d1, d2))
 }
 
-func simplePerms() {
-	runPerms(gsim.NewSimplePermutation([]interface{}{"a", "b", "c", "d", "e"}))
+func simplePerms(consumer gsim.PermutationConsumer) {
+	runPerms(consumer, gsim.NewSimplePermutation([]interface{}{"a", "b", "c", "d", "e"}))
 }
 
-func runPerms(og gsim.OptionGenerator) {
-	perms := gsim.BuildPermutations(og)
-	perms.ForEachPar(8192, func(n *big.Int, perm []interface{}) {
-		fmt.Println(n, perm)
-	})
+func runPerms(consumer gsim.PermutationConsumer, og gsim.OptionGenerator) {
+	gsim.BuildPermutations(og).ForEachPar(8192, consumer)
 }
