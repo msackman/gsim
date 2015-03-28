@@ -55,7 +55,13 @@ func (gn *GraphNode) Joins() bool {
 // and B to C, and set C to be a join-node.
 //
 // If a node has multiple incoming edges and it's not set as a join
-// node then it may appear multiple times in a permutation.
+// node then it will still only appear once in any permutation, but
+// can appear straight after any node which has an edge to it is
+// reached. For example, if you have three nodes, A B and C, and edges
+// A to C and B to C and you don't set C as a join-node, then C will
+// still never appear first, but it can appear as soon as A or B have
+// been chosen, and it will only appear once. So the permutations will
+// be A B C; B A C; A C B; B C A.
 func (gn *GraphNode) SetJoins(join bool) {
 	gn.join = join
 }
@@ -125,6 +131,8 @@ func (gp *graphPermutation) Clone() OptionGenerator {
 	}
 }
 
+var nonJoinVisitedToken = make(map[*GraphNode]bool)
+
 func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 	if lastChosen != nil {
 		lastChosenGraphNode := lastChosen.(*GraphNode)
@@ -154,8 +162,11 @@ func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 					}
 
 				} else {
-					gp.currentMap[gn] = true
-					gp.current = append(gp.current, gn)
+					if _, found = gp.joinNodeState[gn]; !found {
+						gp.currentMap[gn] = true
+						gp.current = append(gp.current, gn)
+						gp.joinNodeState[gn] = nonJoinVisitedToken
+					}
 				}
 			}
 		}

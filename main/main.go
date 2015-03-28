@@ -52,7 +52,8 @@ func graphPerms() {
 	a5.SetJoins(true)
 	runPerms(gsim.NewGraphPermutation(a1, a2))
 
-	// by not setting d3 to a join, it can be visited twice
+	// by not setting d3 to a join, it can appear after any enabling
+	// node is visited.
 	d1 := gsim.NewGraphNode("D1")
 	d2 := gsim.NewGraphNode("D2")
 	d3 := gsim.NewGraphNode("D3")
