@@ -230,9 +230,9 @@ func (p *Permutations) ForEach(f PermutationConsumer) {
 // permutation numbers and repeatedly calling Permutation is slower
 // than using either of the iterator functions.
 func (p *Permutations) Permutation(permNum *big.Int) []interface{} {
-	n := big.NewInt(0).Set(permNum)
+	n := new(big.Int).Set(permNum)
 	perm := []interface{}{}
-	choiceBig := big.NewInt(0)
+	choiceBig := new(big.Int)
 
 	gen := p.generator.Clone()
 	val := p.value
