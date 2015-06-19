@@ -52,9 +52,7 @@ type PermutationConsumer interface {
 
 // Permutations allows you to interate through the available
 // permutations, and extract specific permutations.
-type Permutations struct {
-	*node
-}
+type Permutations node
 
 var (
 	bigIntZero = big.NewInt(0)
@@ -63,15 +61,12 @@ var (
 
 // Construct a Permutations from an OptionGenerator.
 func BuildPermutations(gen OptionGenerator) *Permutations {
-	cur := &node{
+	return (*Permutations)(&node{
 		n:         bigIntZero,
 		depth:     0,
 		generator: gen,
 		cumuOpts:  bigIntOne,
-	}
-	return &Permutations{
-		node: cur,
-	}
+	})
 }
 
 type permN struct {
@@ -174,10 +169,10 @@ func (p *Permutations) ForEach(f PermutationConsumer) {
 	perm := []interface{}{}
 
 	worklist := []*node{&node{
-		n:         p.node.n,
-		depth:     p.node.depth,
-		generator: p.node.generator.Clone(),
-		cumuOpts:  p.node.cumuOpts,
+		n:         p.n,
+		depth:     p.depth,
+		generator: p.generator.Clone(),
+		cumuOpts:  p.cumuOpts,
 	}}
 	l := len(worklist)
 
@@ -238,8 +233,8 @@ func (p *Permutations) Permutation(permNum *big.Int) []interface{} {
 	perm := []interface{}{}
 	choiceBig := big.NewInt(0)
 
-	gen := p.node.generator.Clone()
-	val := p.node.value
+	gen := p.generator.Clone()
+	val := p.value
 	for {
 		options := gen.Generate(val)
 		optionCount := len(options)
