@@ -75,8 +75,8 @@ type permN struct {
 }
 
 type parPermutationConsumer struct {
-	ch        chan<- []*permN
-	batch     []*permN
+	ch        chan<- []permN
+	batch     []permN
 	batchIdx  int
 	batchSize int
 }
@@ -84,7 +84,7 @@ type parPermutationConsumer struct {
 func (ppc *parPermutationConsumer) Clone() PermutationConsumer {
 	return &parPermutationConsumer{
 		ch:        ppc.ch,
-		batch:     make([]*permN, ppc.batchSize),
+		batch:     make([]permN, ppc.batchSize),
 		batchIdx:  0,
 		batchSize: ppc.batchSize,
 	}
@@ -93,11 +93,12 @@ func (ppc *parPermutationConsumer) Clone() PermutationConsumer {
 func (ppc *parPermutationConsumer) Consume(n *big.Int, perm []interface{}) {
 	permCopy := make([]interface{}, len(perm))
 	copy(permCopy, perm)
-	ppc.batch[ppc.batchIdx] = &permN{n: n, perm: permCopy}
+	ppc.batch[ppc.batchIdx].n = n
+	ppc.batch[ppc.batchIdx].perm = permCopy
 	ppc.batchIdx += 1
 	if ppc.batchIdx == ppc.batchSize {
 		ppc.ch <- ppc.batch
-		ppc.batch = make([]*permN, ppc.batchSize)
+		ppc.batch = make([]permN, ppc.batchSize)
 		ppc.batchIdx = 0
 	}
 }
@@ -105,7 +106,7 @@ func (ppc *parPermutationConsumer) Consume(n *big.Int, perm []interface{}) {
 func (ppc *parPermutationConsumer) flush() {
 	if ppc.batchIdx > 0 {
 		ppc.ch <- ppc.batch[:ppc.batchIdx]
-		ppc.batch = make([]*permN, ppc.batchSize)
+		ppc.batch = make([]permN, ppc.batchSize)
 		ppc.batchIdx = 0
 	}
 }
@@ -129,7 +130,7 @@ func (p *Permutations) ForEachPar(batchSize int, f PermutationConsumer) {
 	par := runtime.GOMAXPROCS(0) // 0 gets the current count
 	var wg sync.WaitGroup
 	wg.Add(par)
-	ch := make(chan []*permN, par*par)
+	ch := make(chan []permN, par*par)
 
 	for idx := 0; idx < par; idx += 1 {
 		go func() {
@@ -149,7 +150,7 @@ func (p *Permutations) ForEachPar(batchSize int, f PermutationConsumer) {
 
 	ppc := &parPermutationConsumer{
 		ch:        ch,
-		batch:     make([]*permN, batchSize),
+		batch:     make([]permN, batchSize),
 		batchIdx:  0,
 		batchSize: batchSize,
 	}
