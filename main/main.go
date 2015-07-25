@@ -59,9 +59,9 @@ func graphPerms(consumer gsim.PermutationConsumer) {
 	a2.AddEdgeTo(a4)
 	a3.AddEdgeTo(a5)
 	a4.AddEdgeTo(a5)
-	a3.SetJoins(true)
-	a4.SetJoins(true)
-	a5.SetJoins(true)
+	a3.AvailableOn = gsim.ConditionAll
+	a4.AvailableOn = gsim.ConditionAll
+	a5.AvailableOn = gsim.ConditionAll
 	runPerms(consumer, gsim.NewGraphPermutation(a1, a2))
 
 	// by not setting d3 to a join, it can appear after any enabling
@@ -72,6 +72,29 @@ func graphPerms(consumer gsim.PermutationConsumer) {
 	d1.AddEdgeTo(d3)
 	d2.AddEdgeTo(d3)
 	runPerms(consumer, gsim.NewGraphPermutation(d1, d2))
+
+	// e3 can only be reached once e1 and e2 have been reached
+	// once e3 has been reached, e4 must not be reached
+	e1 := gsim.NewGraphNode("E1")
+	e2 := gsim.NewGraphNode("E2")
+	e3 := gsim.NewGraphNode("E3")
+	e4 := gsim.NewGraphNode("E4")
+	e1.AddEdgeTo(e3)
+	e2.AddEdgeTo(e3)
+	e3.AvailableOn = gsim.ConditionAll
+	e1.AddEdgeTo(e4)
+	e2.AddEdgeTo(e4)
+	e3.AddEdgeTo(e4)
+	e4.InhibitOn = gsim.Condition(
+		func(node *gsim.GraphNode, incomingVisited []*gsim.GraphNode) bool {
+			for _, gn := range incomingVisited {
+				if gn == e3 {
+					return true
+				}
+			}
+			return false
+		})
+	runPerms(consumer, gsim.NewGraphPermutation(e1, e2))
 }
 
 func simplePerms(consumer gsim.PermutationConsumer) {
