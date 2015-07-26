@@ -84,6 +84,10 @@ func graphPerms(consumer gsim.PermutationConsumer) {
 	e3.AvailableOn = gsim.ConditionAll
 	e1.AddEdgeTo(e4)
 	e2.AddEdgeTo(e4)
+	// NB the edge from e3 to e4 is essential: without this, e4 will
+	// never be inhibited as it will never learn that e3 has been
+	// visited. Thus edges need to be thought of as triggers for both
+	// eligibility and inhibition.
 	e3.AddEdgeTo(e4)
 	e4.InhibitOn = gsim.Condition(
 		func(node *gsim.GraphNode, incomingVisited []*gsim.GraphNode) bool {

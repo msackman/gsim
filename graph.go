@@ -221,23 +221,23 @@ var (
 	// InhibitOn. Thus by default nodes are never eliminated from
 	// selection (until of course they've been visited and included in
 	// the current permutation).
-	ConditionNever = Condition(func(node *GraphNode, visited []*GraphNode) bool {
+	ConditionNever = func(node *GraphNode, visited []*GraphNode) bool {
 		return false
-	})
+	}
 	// ConditionAny returns true provided the list of visited nodes is
 	// at least one item long. This is the default value for
 	// AvailableOn. Thus by default nodes become available for
 	// selection as soon as any of their incoming edges are reached.
-	ConditionAny = Condition(func(node *GraphNode, visited []*GraphNode) bool {
+	ConditionAny = func(node *GraphNode, visited []*GraphNode) bool {
 		return len(visited) != 0
-	})
+	}
 	// ConditionAll returns true provided the list of visited nodes is
 	// of the same length as (and thus setwise-equal to) the list of
 	// incoming edges to the node. If used as the AvailableOn
 	// condition, this will make the node available for inclusion in
 	// the permutation only once all the incoming edges have been
 	// visited.
-	ConditionAll = Condition(func(node *GraphNode, visited []*GraphNode) bool {
+	ConditionAll = func(node *GraphNode, visited []*GraphNode) bool {
 		return len(visited) == len(node.In)
-	})
+	}
 )
