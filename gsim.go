@@ -95,7 +95,7 @@ func (ppc *parPermutationConsumer) Consume(n *big.Int, perm []interface{}) {
 	copy(permCopy, perm)
 	ppc.batch[ppc.batchIdx].n = n
 	ppc.batch[ppc.batchIdx].perm = permCopy
-	ppc.batchIdx += 1
+	ppc.batchIdx++
 	if ppc.batchIdx == ppc.batchSize {
 		ppc.ch <- ppc.batch
 		ppc.batch = make([]permN, ppc.batchSize)
@@ -132,7 +132,7 @@ func (p *Permutations) ForEachPar(batchSize int, f PermutationConsumer) {
 	wg.Add(par)
 	ch := make(chan []permN, par*par)
 
-	for idx := 0; idx < par; idx += 1 {
+	for idx := 0; idx < par; idx++ {
 		go func() {
 			defer wg.Done()
 			g := f.Clone()
@@ -175,10 +175,8 @@ func (p *Permutations) ForEach(f PermutationConsumer) {
 		generator: p.generator.Clone(),
 		cumuOpts:  p.cumuOpts,
 	}}
-	l := len(worklist)
 
-	for l != 0 {
-		l -= 1
+	for l := len(worklist) - 1; l != -1; l-- {
 		cur := worklist[l]
 		worklist = worklist[:l]
 
