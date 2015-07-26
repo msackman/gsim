@@ -106,8 +106,8 @@ func NewGraphPermutation(startingNode ...*GraphNode) OptionGenerator {
 		nodeState[gn] = &graphNodeState{
 			GraphNode:       gn,
 			inhibited:       false,
-			available:       false,
-			incomingVisited: []*GraphNode{},
+			available:       true,
+			incomingVisited: make([]*GraphNode, 0, len(gn.In)),
 		}
 	}
 	return &graphPermutation{
