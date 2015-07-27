@@ -144,6 +144,7 @@ func (p *Permutations) ForEachPar(batchSize int, f PermutationConsumer) {
 				for _, perm := range perms {
 					g.Consume(perm.n, perm.perm)
 				}
+				runtime.Gosched()
 			}
 		}()
 	}

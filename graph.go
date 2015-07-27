@@ -72,25 +72,32 @@ func containsGraphNode(gns []*GraphNode, gn *GraphNode) bool {
 }
 
 type graphPermutation struct {
+	parent    *graphPermutation
 	current   []interface{}
 	nodeState map[interface{}]*graphNodeState
 }
 
 type graphNodeState struct {
 	*GraphNode
+	permutation     *graphPermutation
 	inhibited       bool
 	available       bool
 	incomingVisited []*GraphNode
 }
 
-func (gns *graphNodeState) Clone() *graphNodeState {
+func (gns *graphNodeState) Clone(gp *graphPermutation) *graphNodeState {
+	if gns.permutation == gp {
+		return gns
+	}
 	gns2 := &graphNodeState{
 		GraphNode:       gns.GraphNode,
+		permutation:     gp,
 		inhibited:       gns.inhibited,
 		available:       gns.available,
 		incomingVisited: make([]*GraphNode, len(gns.incomingVisited)),
 	}
 	copy(gns2.incomingVisited, gns.incomingVisited)
+	gp.nodeState[gns2.GraphNode] = gns2
 	return gns2
 }
 
@@ -100,38 +107,52 @@ func (gns *graphNodeState) Clone() *graphNodeState {
 // any combination.
 func NewGraphPermutation(startingNode ...*GraphNode) OptionGenerator {
 	current := make([]interface{}, len(startingNode))
-	nodeState := make(map[interface{}]*graphNodeState)
+	nodeState := make(map[interface{}]*graphNodeState, len(startingNode))
+	gp := &graphPermutation{
+		current:   current,
+		nodeState: nodeState,
+	}
 	for idx, gn := range startingNode {
 		current[idx] = gn
 		nodeState[gn] = &graphNodeState{
 			GraphNode:       gn,
+			permutation:     gp,
 			inhibited:       false,
 			available:       true,
 			incomingVisited: make([]*GraphNode, 0, len(gn.In)),
 		}
 	}
-	return &graphPermutation{
-		current:   current,
-		nodeState: nodeState,
-	}
+	return gp
 }
 
 func (gp *graphPermutation) Clone() OptionGenerator {
 	current := make([]interface{}, len(gp.current))
 	copy(current, gp.current)
-	nodeState := make(map[interface{}]*graphNodeState)
-	for gn, gns := range gp.nodeState {
-		nodeState[gn] = gns.Clone()
-	}
 	return &graphPermutation{
+		parent:    gp,
 		current:   current,
-		nodeState: nodeState,
+		nodeState: make(map[interface{}]*graphNodeState, len(gp.nodeState)),
+	}
+}
+
+func (gp *graphPermutation) getNodeState(node interface{}, cloneToLocal bool) (*graphNodeState, bool) {
+	if gns, found := gp.nodeState[node]; found {
+		return gns.Clone(gp), found
+	} else if gp.parent == nil {
+		return nil, found
+	} else if gns, found = gp.parent.getNodeState(node, false); found && cloneToLocal {
+		return gns.Clone(gp), found
+	} else if found {
+		gp.nodeState[node] = gns
+		return gns, found
+	} else {
+		return nil, false
 	}
 }
 
 func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 	if lastChosen != nil {
-		lastChosenState := gp.nodeState[lastChosen]
+		lastChosenState, _ := gp.getNodeState(lastChosen, true)
 		lastChosenState.inhibited = true
 		for idx, node := range gp.current {
 			if node == lastChosen {
@@ -141,7 +162,7 @@ func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 		}
 
 		for _, gn := range lastChosenState.Out {
-			nodeState, found := gp.nodeState[gn]
+			nodeState, found := gp.getNodeState(gn, false)
 
 			dirty := false
 			switch {
@@ -157,6 +178,7 @@ func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 				}
 				if !found {
 					dirty = true
+					nodeState = nodeState.Clone(gp)
 					nodeState.incomingVisited = append(nodeState.incomingVisited, lastChosenState.GraphNode)
 				}
 
@@ -164,6 +186,7 @@ func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 				dirty = true
 				nodeState = &graphNodeState{
 					GraphNode:       gn,
+					permutation:     gp,
 					inhibited:       false,
 					available:       false,
 					incomingVisited: make([]*GraphNode, 1, len(gn.In)),
