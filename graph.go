@@ -31,24 +31,173 @@ type GraphNode struct {
 	// The incoming edges from this node. Treat this field as read-only
 	// and use the AddEdgeTo method to add edges.
 	In []*GraphNode
-	// The condition under which a node will never be eligible for
-	// selection in the permutation. By default, this is
-	// ConditionNever.
-	InhibitOn Condition
-	// The condition under which a node becomes eligible for selection
-	// in the permutation. By default, this is ConditionAny.
-	AvailableOn Condition
+	// The callback is invoked when the node is not inhibited and an
+	// additional incoming edge is reached. The callback controls when
+	// the node becomes eligible for selection in the permutation, and
+	// when it is excluded from selection.
+	Callback GraphNodeCallback
 }
 
+type GraphNodeCallback interface {
+	IncomingEdgesReached(*GraphNode, []*GraphNode) GraphNodeStateChange
+}
+
+type availableAnyCallback struct{}
+
+func (aac *availableAnyCallback) IncomingEdgesReached(*GraphNode, []*GraphNode) GraphNodeStateChange {
+	return MakeAvailable
+}
+
+// The AvailableAnyCallback is the default callback and will always
+// return MakeAvailable. This means as soon as at least one incoming
+// edge has been reached, the node becomes available for selection.
+var AvailableAnyCallback = &availableAnyCallback{}
+
+type allCallback struct {
+	result   GraphNodeStateChange
+	required []*GraphNode
+}
+
+func newAllCallback(result GraphNodeStateChange, required ...*GraphNode) GraphNodeCallback {
+	return &allCallback{
+		result:   result,
+		required: required,
+	}
+}
+func (ac *allCallback) IncomingEdgesReached(node *GraphNode, reached []*GraphNode) GraphNodeStateChange {
+	if len(reached) >= len(ac.required) {
+		// we required that everything in ac.required is in reached. Reached can be bigger.
+		for _, reqNode := range ac.required {
+			found := false
+			for _, reachedNode := range reached {
+				if found = reqNode == reachedNode; found {
+					break
+				}
+			}
+			if !found {
+				return NoChange
+			}
+		}
+		return ac.result
+	}
+	return NoChange
+}
+
+// The AvailableAllCallback returns MakeAvailable only when all of the
+// nodes supplied to the constructor are found in the reached incoming
+// edges. It never returns Inhibit.
+type AvailableAllCallback GraphNodeCallback
+
+func NewAvailableAllCallback(required ...*GraphNode) AvailableAllCallback {
+	return (AvailableAllCallback)(newAllCallback(MakeAvailable, required...))
+}
+
+type inhibitAnyCallback struct{}
+
+func (iac *inhibitAnyCallback) IncomingEdgesReached(*GraphNode, []*GraphNode) GraphNodeStateChange {
+	return Inhibit
+}
+
+// The InhibitAnyCallback is the inhibit equivalent to
+// AvailableAnyCallback. It returns Inhibit as soon as at least one
+// incoming edge has been reached.
+var InhibitAnyCallback = &inhibitAnyCallback{}
+
+// The InhibitAllCallback is the inhibit equivalent to
+// AvailableAllCallback. It returns Inhibit only when all of the nodes
+// supplied to the constructor are found in the reached incoming
+// edges. It never returns MakeAvailable.
+type InhibitAllCallback GraphNodeCallback
+
+func NewInhibitAllCallback(required ...*GraphNode) InhibitAllCallback {
+	return (InhibitAllCallback)(newAllCallback(Inhibit, required...))
+}
+
+// The CombinationCallback allows you to attach several callbacks to a
+// graphnode. This is very useful for more complex and layer logic
+// surrounding when a node becomes available for selection or
+// inhibited. Each callback produces a GraphNodeStateChange answer,
+// and it is then up to the combiner function to combine all those
+// answers. The combiner is provided with the node, the reached
+// incoming edges, the list of callbacks, and the corresponding list
+// of their answers. It is in fact perfectly possible to have
+// combinations of combinations, should you really need to!
+type CombinationCallback struct {
+	callbacks []GraphNodeCallback
+	combiner  CombinationCallbackCombiner
+}
+
+type CombinationCallbackCombiner func(*GraphNode, []*GraphNode, []GraphNodeCallback, []GraphNodeStateChange) GraphNodeStateChange
+
+func NewCombinationCallback(combiner CombinationCallbackCombiner) *CombinationCallback {
+	return &CombinationCallback{
+		combiner: combiner,
+	}
+}
+
+func (cc *CombinationCallback) AddCallback(callback GraphNodeCallback) {
+	cc.callbacks = append(cc.callbacks, callback)
+}
+
+func (cc *CombinationCallback) IncomingEdgesReached(node *GraphNode, reached []*GraphNode) GraphNodeStateChange {
+	results := make([]GraphNodeStateChange, len(cc.callbacks))
+	for idx, callback := range cc.callbacks {
+		results[idx] = callback.IncomingEdgesReached(node, reached)
+	}
+	return cc.combiner(node, reached, cc.callbacks, results)
+}
+
+// InhibitThenAvailableCombiner is a CombinationCallbackCombiner. Its
+// semantics are that if any callback returns Inhibit, then the result
+// is Inhibit. If no callback returns Inhibit, and at least one
+// callback returns MakeAvailable then the result in
+// MakeAvailable. Otherwise the result is NoChange.
+func InhibitThenAvailableCombiner(node *GraphNode, reached []*GraphNode, callbacks []GraphNodeCallback, results []GraphNodeStateChange) GraphNodeStateChange {
+	finalResult := GraphNodeStateChange(NoChange)
+	for _, result := range results {
+		switch result {
+		case Inhibit:
+			return Inhibit
+		case MakeAvailable:
+			finalResult = MakeAvailable
+		}
+	}
+	return finalResult
+}
+
+type GraphNodeStateChange interface {
+	graphNodeStateChangeWitness()
+}
+
+type noChange struct{}
+
+func (nc *noChange) graphNodeStateChangeWitness() {}
+func (nc *noChange) String() string               { return "NoChange" }
+
+type makeAvailable struct{}
+
+func (ma *makeAvailable) graphNodeStateChangeWitness() {}
+func (ma *makeAvailable) String() string               { return "MakeAvailable" }
+
+type inhibit struct{}
+
+func (i *inhibit) graphNodeStateChangeWitness() {}
+func (i *inhibit) String() string               { return "Inhibit" }
+
+var (
+	NoChange      = &noChange{}
+	MakeAvailable = &makeAvailable{}
+	Inhibit       = &inhibit{}
+)
+
 // Construct a new GraphNode. The node will start with no edges,
-// AvailableOn is ConditionAny and InhibitOn is ConditionNever.
+// and Callback is AvailableAnyCallback.
 func NewGraphNode(value interface{}) *GraphNode {
 	return &GraphNode{
-		Value:       value,
-		Out:         []*GraphNode{},
-		In:          []*GraphNode{},
-		InhibitOn:   ConditionNever,
-		AvailableOn: ConditionAny,
+		Value:    value,
+		Out:      []*GraphNode{},
+		In:       []*GraphNode{},
+		Callback: AvailableAnyCallback,
 	}
 }
 
@@ -199,7 +348,8 @@ func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 				continue
 			}
 
-			if nodeState.InhibitOn(nodeState.GraphNode, nodeState.incomingVisited) {
+			switch nodeState.Callback.IncomingEdgesReached(nodeState.GraphNode, nodeState.incomingVisited) {
+			case Inhibit:
 				if nodeState.available {
 					nodeState.available = false
 					for idx, node := range gp.current {
@@ -210,15 +360,11 @@ func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 					}
 				}
 				nodeState.inhibited = true
-				continue
-			}
-
-			if nodeState.available {
-				continue
-			}
-			if nodeState.AvailableOn(nodeState.GraphNode, nodeState.incomingVisited) {
-				nodeState.available = true
-				gp.current = append(gp.current, nodeState.GraphNode)
+			case MakeAvailable:
+				if !nodeState.available {
+					nodeState.available = true
+					gp.current = append(gp.current, nodeState.GraphNode)
+				}
 			}
 		}
 	}
@@ -228,39 +374,3 @@ func (gp *graphPermutation) Generate(lastChosen interface{}) []interface{} {
 func (gn *GraphNode) String() string {
 	return fmt.Sprintf("GraphNode with value %v", gn.Value)
 }
-
-// Conditions are used to control the circumstances under which a node
-// which has at least one incoming edge reached becomes either
-// available to selection or inhibited from ever being selection. If
-// you implement your own, make sure they are pure functions. The
-// arguments are the node in question, and the slice of incoming nodes
-// which have been visited. It is guaranteed this list does not
-// contain duplicates. Note once a node is inhibited, it cannot be
-// visited.
-type Condition func(node *GraphNode, incomingVisited []*GraphNode) bool
-
-var (
-	// ConditionNever always returns false and is the default value for
-	// InhibitOn. Thus by default nodes are never eliminated from
-	// selection (until of course they've been visited and included in
-	// the current permutation).
-	ConditionNever = func(node *GraphNode, visited []*GraphNode) bool {
-		return false
-	}
-	// ConditionAny returns true provided the list of visited nodes is
-	// at least one item long. This is the default value for
-	// AvailableOn. Thus by default nodes become available for
-	// selection as soon as any of their incoming edges are reached.
-	ConditionAny = func(node *GraphNode, visited []*GraphNode) bool {
-		return len(visited) != 0
-	}
-	// ConditionAll returns true provided the list of visited nodes is
-	// of the same length as (and thus setwise-equal to) the list of
-	// incoming edges to the node. If used as the AvailableOn
-	// condition, this will make the node available for inclusion in
-	// the permutation only once all the incoming edges have been
-	// visited.
-	ConditionAll = func(node *GraphNode, visited []*GraphNode) bool {
-		return len(visited) == len(node.In)
-	}
-)
