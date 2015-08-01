@@ -96,9 +96,9 @@ func graphPerms(consumer gsim.PermutationConsumer) {
 	e3.AddEdgeTo(e4)
 	combCallback := gsim.NewCombinationCallback(gsim.InhibitThenAvailableCombiner)
 	e4.Callback = combCallback
+	combCallback.AddCallback(gsim.NewInhibitAllCallback(e3))
 	combCallback.AddCallback(gsim.NewAvailableAllCallback(e1))
 	combCallback.AddCallback(gsim.NewAvailableAllCallback(e2))
-	combCallback.AddCallback(gsim.NewInhibitAllCallback(e3))
 	runPerms(consumer, gsim.NewGraphPermutation(e1, e2))
 }
 

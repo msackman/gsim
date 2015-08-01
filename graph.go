@@ -114,20 +114,24 @@ func NewInhibitAllCallback(required ...*GraphNode) InhibitAllCallback {
 }
 
 // The CombinationCallback allows you to attach several callbacks to a
-// graphnode. This is very useful for more complex and layer logic
+// graphnode. This is very useful for more complex and layered logic
 // surrounding when a node becomes available for selection or
 // inhibited. Each callback produces a GraphNodeStateChange answer,
 // and it is then up to the combiner function to combine all those
-// answers. The combiner is provided with the node, the reached
-// incoming edges, the list of callbacks, and the corresponding list
-// of their answers. It is in fact perfectly possible to have
-// combinations of combinations, should you really need to!
+// answers. The combiner is the same as the function in a fold: it is
+// fed with the current accumulated value, and the new value, and
+// asked to produce a newer accumulated value. The combiner can
+// indicate to stop iteration through the callbacks
+// (i.e. short-circuiting) if it decides it's reached a result which
+// cannot change. The accumulator is initiated to NoChange. It is in
+// fact perfectly possible to have combinations of combinations,
+// should you really need to!
 type CombinationCallback struct {
 	callbacks []GraphNodeCallback
 	combiner  CombinationCallbackCombiner
 }
 
-type CombinationCallbackCombiner func(*GraphNode, []*GraphNode, []GraphNodeCallback, []GraphNodeStateChange) GraphNodeStateChange
+type CombinationCallbackCombiner func(node *GraphNode, reached []*GraphNode, acc GraphNodeStateChange, curCallback GraphNodeCallback, callbackResult GraphNodeStateChange) (newAcc GraphNodeStateChange, stop bool)
 
 func NewCombinationCallback(combiner CombinationCallbackCombiner) *CombinationCallback {
 	return &CombinationCallback{
@@ -140,11 +144,14 @@ func (cc *CombinationCallback) AddCallback(callback GraphNodeCallback) {
 }
 
 func (cc *CombinationCallback) IncomingEdgesReached(node *GraphNode, reached []*GraphNode) GraphNodeStateChange {
-	results := make([]GraphNodeStateChange, len(cc.callbacks))
-	for idx, callback := range cc.callbacks {
-		results[idx] = callback.IncomingEdgesReached(node, reached)
+	acc := (GraphNodeStateChange)(NoChange)
+	stop := false
+	for _, callback := range cc.callbacks {
+		if acc, stop = cc.combiner(node, reached, acc, callback, callback.IncomingEdgesReached(node, reached)); stop {
+			break
+		}
 	}
-	return cc.combiner(node, reached, cc.callbacks, results)
+	return acc
 }
 
 // InhibitThenAvailableCombiner is a CombinationCallbackCombiner. Its
@@ -152,17 +159,14 @@ func (cc *CombinationCallback) IncomingEdgesReached(node *GraphNode, reached []*
 // is Inhibit. If no callback returns Inhibit, and at least one
 // callback returns MakeAvailable then the result in
 // MakeAvailable. Otherwise the result is NoChange.
-func InhibitThenAvailableCombiner(node *GraphNode, reached []*GraphNode, callbacks []GraphNodeCallback, results []GraphNodeStateChange) GraphNodeStateChange {
-	finalResult := GraphNodeStateChange(NoChange)
-	for _, result := range results {
-		switch result {
-		case Inhibit:
-			return Inhibit
-		case MakeAvailable:
-			finalResult = MakeAvailable
-		}
+func InhibitThenAvailableCombiner(node *GraphNode, reached []*GraphNode, acc GraphNodeStateChange, curCallback GraphNodeCallback, callbackResult GraphNodeStateChange) (newAcc GraphNodeStateChange, stop bool) {
+	if callbackResult == Inhibit {
+		return Inhibit, true
 	}
-	return finalResult
+	if acc == MakeAvailable || callbackResult == MakeAvailable {
+		return MakeAvailable, false
+	}
+	return NoChange, false
 }
 
 type GraphNodeStateChange interface {
